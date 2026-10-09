@@ -69,3 +69,32 @@ CREATE TABLE work_orders (
     created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CHECK (planned_end > planned_start)
 );
+
+-- 7. Production runs: what actually happened on each machine
+CREATE TABLE production_runs (
+    run_id          INTEGER    PRIMARY KEY,
+    work_order_id   INTEGER    NOT NULL REFERENCES work_orders(work_order_id) ON DELETE CASCADE,
+    machine_id      INTEGER    NOT NULL REFERENCES machines(machine_id),
+    actual_start    TIMESTAMP  NOT NULL,
+    actual_end      TIMESTAMP,
+    quantity_good   INTEGER    NOT NULL DEFAULT 0 CHECK (quantity_good >= 0),
+    quantity_scrap  INTEGER    NOT NULL DEFAULT 0 CHECK (quantity_scrap >= 0),
+    CHECK (actual_end IS NULL OR actual_end > actual_start)
+);
+
+-- 8. Sensor readings from each machine (feeds predictive maintenance)
+CREATE TABLE sensor_readings (
+    reading_id            BIGINT        PRIMARY KEY,
+    machine_id            INTEGER       NOT NULL REFERENCES machines(machine_id),
+    reading_time          TIMESTAMP     NOT NULL,
+    air_temp_k            NUMERIC(6,2)  NOT NULL CHECK (air_temp_k > 0),
+    process_temp_k        NUMERIC(6,2)  NOT NULL CHECK (process_temp_k > 0),
+    rotational_speed_rpm  INTEGER       NOT NULL CHECK (rotational_speed_rpm >= 0),
+    torque_nm             NUMERIC(6,2)  NOT NULL CHECK (torque_nm >= 0),
+    tool_wear_min         INTEGER       NOT NULL CHECK (tool_wear_min >= 0),
+    UNIQUE (machine_id, reading_time)
+);
+
+-- 9. Indexes to speed up the most frequent queries
+CREATE INDEX idx_runs_work_order ON production_runs (work_order_id);
+CREATE INDEX idx_runs_machine    ON production_runs (machine_id);
