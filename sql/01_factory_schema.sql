@@ -95,6 +95,20 @@ CREATE TABLE sensor_readings (
     UNIQUE (machine_id, reading_time)
 );
 
--- 9. Indexes to speed up the most frequent queries
+-- 9. Maintenance events: failures, tool changes and preventive maintenance
+CREATE TABLE maintenance_events (
+    event_id      INTEGER      PRIMARY KEY,
+    machine_id    INTEGER      NOT NULL REFERENCES machines(machine_id),
+    event_time    TIMESTAMP    NOT NULL,
+    event_type    VARCHAR(20)  NOT NULL
+                  CHECK (event_type IN ('FAILURE', 'TOOL_CHANGE', 'PREVENTIVE')),
+    failure_mode  VARCHAR(20)
+                  CHECK (failure_mode IN ('TOOL_WEAR', 'HEAT_DISSIPATION', 'POWER', 'OVERSTRAIN', 'RANDOM')),
+    downtime_min  INTEGER      NOT NULL CHECK (downtime_min >= 0),
+    CHECK ((event_type = 'FAILURE') = (failure_mode IS NOT NULL))
+);
+
+-- 10. Indexes to speed up the most frequent queries
 CREATE INDEX idx_runs_work_order ON production_runs (work_order_id);
 CREATE INDEX idx_runs_machine    ON production_runs (machine_id);
+CREATE INDEX idx_maint_machine_time ON maintenance_events (machine_id, event_time);
