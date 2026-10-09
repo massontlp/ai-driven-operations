@@ -29,7 +29,7 @@ A digital twin of a CNC machining plant where humans and robots work together, u
 ## Roadmap
 
 - [x] Database schema: suppliers, materials, products, machines, work orders
-- [ ] Production runs and sensor data tables
+- [x] Production runs and sensor data tables
 - [ ] Synthetic data generator
 - [ ] Demand forecasting and predictive maintenance models
 - [ ] Computer vision defect inspection
