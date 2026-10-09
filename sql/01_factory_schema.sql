@@ -44,3 +44,28 @@ CREATE TABLE products (
     unit_price            NUMERIC(10,2)  NOT NULL CHECK (unit_price >= 0)
 );
 
+-- 5. Machines on the shop floor (CNC, robots, inspection stations)
+CREATE TABLE machines (
+    machine_id    INTEGER       PRIMARY KEY,
+    machine_code  VARCHAR(20)   NOT NULL UNIQUE,
+    machine_type  VARCHAR(20)   NOT NULL
+                  CHECK (machine_type IN ('CNC_MILL', 'CNC_LATHE', 'ROBOT_ARM', 'INSPECTION')),
+    install_date  DATE          NOT NULL,
+    hourly_cost   NUMERIC(8,2)  NOT NULL CHECK (hourly_cost >= 0),
+    status        VARCHAR(15)   NOT NULL DEFAULT 'ACTIVE'
+                  CHECK (status IN ('ACTIVE', 'MAINTENANCE', 'RETIRED'))
+);
+
+-- 6. Work orders: what to produce, how much and when (ERP)
+CREATE TABLE work_orders (
+    work_order_id     INTEGER      PRIMARY KEY,
+    wo_number         VARCHAR(20)  NOT NULL UNIQUE,
+    product_id        INTEGER      NOT NULL REFERENCES products(product_id),
+    quantity_planned  INTEGER      NOT NULL CHECK (quantity_planned > 0),
+    planned_start     TIMESTAMP    NOT NULL,
+    planned_end       TIMESTAMP    NOT NULL,
+    status            VARCHAR(15)  NOT NULL DEFAULT 'PLANNED'
+                      CHECK (status IN ('PLANNED', 'RELEASED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED')),
+    created_at        TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (planned_end > planned_start)
+);
