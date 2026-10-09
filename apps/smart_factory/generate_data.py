@@ -22,6 +22,15 @@ BASE_WEEKLY_DEMAND = {
     "FST-B08": 1500,
 }
 
+CATEGORY_TO_MACHINE_TYPE = {
+    "HOUSING": "CNC_MILL",
+    "GEAR": "CNC_MILL",
+    "SHAFT": "CNC_LATHE",
+    "FASTENER": "CNC_LATHE",
+}
+BASE_SCRAP_RATE = 0.02
+SCRAP_RATE_PER_YEAR = 0.004
+
 rng = np.random.default_rng(SEED)
 
 
@@ -166,6 +175,51 @@ def generate_work_orders(products: pd.DataFrame) -> pd.DataFrame:
     ]
     return orders[columns]
 
+def generate_production_runs(
+    work_orders: pd.DataFrame,
+    products: pd.DataFrame,
+    machines: pd.DataFrame,
+) -> pd.DataFrame:
+    """Simulate what actually happened on the shop floor for each completed work order."""
+    runs = work_orders[work_orders["status"] == "COMPLETED"].copy()
+    runs = runs.merge(products[["product_id", "category", "cycle_time_min"]], on="product_id")
+    runs["machine_type"] = runs["category"].map(CATEGORY_TO_MACHINE_TYPE)
+
+    runs["machine_id"] = 0
+    for machine_type, group in runs.groupby("machine_type"):
+        candidates = machines.loc[machines["machine_type"] == machine_type, "machine_id"]
+        runs.loc[group.index, "machine_id"] = rng.choice(candidates, size=len(group))
+
+    start_delay_hours = rng.exponential(scale=1.5, size=len(runs))
+    runs["actual_start"] = runs["planned_start"] + pd.to_timedelta(start_delay_hours, unit="h")
+
+    required_hours = runs["quantity_planned"] * runs["cycle_time_min"] / 60
+    efficiency = rng.normal(1.15, 0.12, size=len(runs)).clip(0.9)
+    runs["actual_end"] = runs["actual_start"] + pd.to_timedelta(required_hours * efficiency, unit="h")
+
+    runs["actual_start"] = runs["actual_start"].dt.round("min")
+    runs["actual_end"] = runs["actual_end"].dt.round("min")
+
+    runs = runs.merge(machines[["machine_id", "install_date"]], on="machine_id")
+    machine_age_years = (runs["planned_start"] - pd.to_datetime(runs["install_date"])).dt.days / 365
+    scrap_rate = BASE_SCRAP_RATE + SCRAP_RATE_PER_YEAR * machine_age_years
+    runs["quantity_scrap"] = rng.binomial(runs["quantity_planned"], scrap_rate)
+    runs["quantity_good"] = runs["quantity_planned"] - runs["quantity_scrap"]
+
+    runs = runs.sort_values("work_order_id").reset_index(drop=True)
+    runs.insert(0, "run_id", range(1, len(runs) + 1))
+
+    columns = [
+        "run_id",
+        "work_order_id",
+        "machine_id",
+        "actual_start",
+        "actual_end",
+        "quantity_good",
+        "quantity_scrap",
+    ]
+    return runs[columns]
+
 if __name__ == "__main__":
     pd.set_option("display.max_columns", None)
     pd.set_option("display.width", 200)
@@ -175,8 +229,20 @@ if __name__ == "__main__":
     products = generate_products(raw_materials)
     machines = generate_machines()
     work_orders = generate_work_orders(products)
+    production_runs = generate_production_runs(work_orders, products, machines)
 
-    print(machines, end="\n\n")
-    print(work_orders.head(10), end="\n\n")
-    print(f"Total work orders: {len(work_orders)}")
-    print(work_orders["status"].value_counts())
+    print(production_runs.head(10), end="\n\n")
+
+    comparison = production_runs.merge(work_orders, on="work_order_id")
+    on_time_rate = (comparison["actual_end"] <= comparison["planned_end"]).mean()
+    total_good = production_runs["quantity_good"].sum()
+    total_scrap = production_runs["quantity_scrap"].sum()
+    yield_rate = total_good / (total_good + total_scrap)
+
+    print(f"Production runs: {len(production_runs)}")
+    print(f"On-time completion: {on_time_rate:.1%}")
+    print(f"Overall yield: {yield_rate:.1%}", end="\n\n")
+
+    by_machine = production_runs.groupby("machine_id")[["quantity_good", "quantity_scrap"]].sum()
+    by_machine["scrap_rate"] = by_machine["quantity_scrap"] / (by_machine["quantity_good"] + by_machine["quantity_scrap"])
+    print(by_machine.merge(machines[["machine_id", "install_date"]], on="machine_id").round(3))
